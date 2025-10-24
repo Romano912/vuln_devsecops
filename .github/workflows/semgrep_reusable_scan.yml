@@ -10,4 +10,4 @@ on:
 
 jobs:
   sast_scan:
-    uses: Romano912/Romano912/orga_reusable_workflow/blob/main/security_reusable_sast_scan.yml@v1
+    uses: Romano912/Romano912/orga_reusable_workflow/blob/main/security_reusable_sast_scan.yml@v2
