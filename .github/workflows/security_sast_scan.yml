@@ -10,6 +10,12 @@ on:
 jobs:
   semgrep:
     runs-on: self-hosted
+
+    # ⚙️ Forcer toutes les étapes à s’exécuter en Bash (même sur Windows)
+    defaults:
+      run:
+        shell: bash
+
     permissions:
       id-token: write
       contents: read
@@ -17,7 +23,6 @@ jobs:
       actions: read
 
     steps:
-
       - name: 🧪 List files 1
         run: ls -la
 
