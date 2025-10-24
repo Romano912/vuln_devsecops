@@ -1,17 +1,76 @@
-name: Hello World (Self-Hosted)
+name: Security SAST scan (Detect vulnerabilities)
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+      - develop
+      - preprod
 
 jobs:
-  hello:
-    runs-on: self-hosted
+  semgrep:
+    runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: read
+      security-events: write
+      actions: read
 
     steps:
-      - name: Vérification du runner
-        run: echo "Runner actif sur $(hostname)"
 
-      - name: Hello World
-        run: echo "Hello World depuis le runner self-hosted ✅"
+      - name: 📥 Checkout du code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Installation Semgrep
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: 🚀 Analyse Semgrep + Génération SARIF
+        shell: pwsh
+        run: |
+          Set-Location $env:GITHUB_WORKSPACE
+
+          # Force Python UTF-8 globally (bien plus fiable que PYTHONIOENCODING seul)
+          setx PYTHONUTF8 1 | Out-Null
+          $env:PYTHONUTF8 = "1"
+
+          # Exécuter Semgrep en mode silencieux pour éviter les erreurs d'encodage console Windows
+          semgrep --config auto --sarif --output semgrep-report.sarif . --quiet 2>$null
+
+          if (-Not (Test-Path "semgrep-report.sarif")) {
+            Write-Host "❌ ERREUR: semgrep-report.sarif n'a PAS été généré."
+            exit 1
+          }
+
+          # Analyse SARIF
+          $json = Get-Content semgrep-report.sarif -Raw -Encoding UTF8 | ConvertFrom-Json
+          $vulnCount = 0
+          if ($json.runs.Count -gt 0 -and $json.runs[0].psobject.Properties.Name -contains 'results') {
+            $vulnCount = $json.runs[0].results.Count
+          }
+
+          Add-Content $env:GITHUB_ENV "VULN_COUNT=$vulnCount"
+          Write-Host "Vulnérabilités détectées : $vulnCount"
+
+      - name: ⬆️ Upload SARIF vers GitHub Advanced Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-report.sarif
+          category: semgrep-sast-analysis
+
+      - name: ✅ Vérification du résultat
+        shell: pwsh
+        run: |
+          $v = [int]$env:VULN_COUNT
+          if ($v -gt 0) {
+            Write-Host "❌ $v vulnérabilités détectées. CI bloquée."
+            exit 1
+          }
+          Write-Host "✅ Aucune vulnérabilité détectée. CI validée."
